@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<link rel="stylesheet" type="text/css" href="style.css">
+<title>WebGL Assignment 5: Texture Mapping to a Sphere</title>
+
+<!-- Per fragment shading: -->
+<!-- Vertex Shader -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+attribute vec4 vPosition;
+attribute vec3 vNormal;
+varying vec3 N, L, E;
+uniform mat4 mvMatrix;
+uniform mat4 prMatrix;
+uniform vec4 lightPosition;
+
+void main() 
+{
+    vec3 pos = (mvMatrix * vPosition).xyz;
+    E = normalize(-pos);
+    // Transform vertex normal into eye coordinates
+    vec4 NN = vec4(vNormal, 0.0);
+    N = normalize((mvMatrix * NN).xyz);
+    
+    vec3 light = lightPosition.xyz;
+    L = normalize(light - pos);
+
+    gl_Position = prMatrix * mvMatrix * vPosition;
+}
+</script>
+
+<!-- Fragment Shader -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+
+uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+uniform float shininess;
+varying vec3 N, L, E;
+
+void main()
+{
+    vec4 fColor;
+    
+    vec3 H = normalize(L + E);
+    
+    // Compute terms in the illumination equation
+    vec4 ambient = ambientProduct;
+    float Kd = max(dot(L, N), 0.0);
+    vec4 diffuse = Kd * diffuseProduct;
+    float Ks = pow(max(dot(N, H), 0.0), shininess);
+    vec4 specular = Ks * specularProduct;
+    if (dot(L, N) < 0.0) {
+        specular = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    fColor = ambient + diffuse + specular;
+    fColor.a = 1.0;
+    
+    gl_FragColor = fColor / 100.0;
+    gl_FragColor += vec4(0.2, 0.5, 1.0, 1.0);
+}
+</script>
+
+<!-- HTML Page -->
+<script type="text/javascript" src="Common/webgl-utils.js"></script>
+<script type="text/javascript" src="Common/initShaders.js"></script>
+<script type="text/javascript" src="Common/MV.js"></script>
+<script type="text/javascript" src="assignment5.js"></script>
+</head>   
+
+<body>
+    <div>
+        <h4 id="heading">WebGL Assignment 5: Texture Mapping to a Sphere</h4>
+    </div>
+
+    <canvas id="gl-canvas" width="1024" height="512">
+        Oops ... your browser doesn't support the HTML5 canvas element
+    </canvas>
+
+    <div id="control">
+        <button id="btn-reset">Reset</button>
+        <br>
+
+        <!-- Current object controls -->
+        <table id="table-current-obj" class="table-ctrl">
+                <td>rotate: x</td>
+                <td><input id="range-rotate-x" type="range" min=-360 max=360 value=0></td>
+                <td id="rotate-x">0</td>
+            </tr>
+            <tr>
+                <td>rotate: y</td>
+                <td><input id="range-rotate-y" type="range" min=-360 max=360 value=0></td>
+                <td id="rotate-y">0</td>
+            </tr>
+            <tr>
+                <td>rotate: z</td>
+                <td><input id="range-rotate-z" type="range" min=-360 max=360 value=0></td>
+                <td id="rotate-z">0</td>
+            </tr>
+        </table>
+
+        <!-- Camera controls -->
+        <table id="table-camera" class="table-ctrl">
+            <tr>
+                <td>projection</td>
+                <td id="td-radio-proj">
+                    <input id="radio-proj-perspective" type="radio" name="proj" value="perspective">perspective
+                    <input id="radio-proj-ortho" type="radio" name="proj" value="ortho">ortho
+                </td>
+            </tr>
+            <tr>
+                <td>Lights</td>
+                <td>
+                    <input id="cb-light" type="checkbox" checked>Light
+                </td>
+            </tr>
+            <tr>
+                <td>camera: x</td>
+                <td><input id="range-cam-x" type="range" min=-1000 max=1000 value=100></td>
+                <td id="cam-x">100</td>
+            </tr>
+            <tr>
+                <td>camera: y</td>
+                <td><input id="range-cam-y" type="range" min=-1000 max=1000 value=100></td>
+                <td id="cam-y">100</td>
+            </tr>
+            <tr>
+                <td>camera: z</td>
+                <td><input id="range-cam-z" type="range" min=-1000 max=1000 value=100></td>
+                <td id="cam-z">100</td>
+            </tr>
+            
+            <tr>
+                <td>lookat: x</td>
+                <td><input id="range-lookat-x" type="range" min=-1000 max=1000 value=0></td>
+                <td id="lookat-x">0</td>
+            </tr>
+            <tr>
+                <td>lookat: y</td>
+                <td><input id="range-lookat-y" type="range" min=-1000 max=1000 value=500></td>
+                <td id="lookat-y">0</td>
+            </tr>
+            <tr>
+                <td>lookat: z</td>
+                <td><input id="range-lookat-z" type="range" min=-1000 max=1000 value=0></td>
+                <td id="lookat-z">0</td>
+            </tr>
+        </table>
+        
+    </div>
+
+    <!--
+    <div id="footer">
+        Tested with Firefox and Chrome.<span id="status"></span>
+    </div>
+    -->
+</body>
+</html>

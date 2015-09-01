@@ -1,0 +1,72 @@
+body {
+    background: #f0f4f0;
+}
+
+#gl-canvas {
+    border: 1px black solid;
+    padding: 0px;
+}
+
+#control {
+    margin-top: 1em;
+    width: 1024px;
+}
+
+#heading {
+    width: 1024px;
+    text-align: center;
+}
+
+.table-ctrl {
+    margin-top: 1em;
+    border: 1px black solid;
+    background: #e0e0f0;
+    padding-right: 10px;
+}
+
+.table-ctrl td {
+    text-align: left;
+}
+
+#td-obj-color, #td-radio-proj {
+    text-align: center;
+}
+
+#table-current-obj {
+    float: left;
+}
+
+#table-camera {
+    float: right;
+}
+
+button {
+    vertical-align: middle;
+}
+
+#btn-create {
+    margin-left: 10em;
+}
+
+#btn-clear {
+    float:right;
+}
+
+#color-picker {
+    width: 50px;
+}
+
+#sel-obj {
+    width: 10em;
+}
+
+#footer {
+    position: fixed;
+    bottom: 0;
+    font-size: 0.8em;
+}
+
+#footer > #status {
+    color: #f02020;
+    padding-left: 10em;
+}
