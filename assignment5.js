@@ -5,14 +5,16 @@ var gl;
 var vBuffer;
 var nBuffer;
 var iBuffer;
-var vBufferIdx;                     // current fill index of vertex buffer
-var nBufferIdx;                     // current fill index of normal buffer
-var iBufferIdx;                     // current fill index of element buffer
+var tBuffer;
+var vBufferIdx;                     // current index of vertex buffer
+var nBufferIdx;                     // current index of normal buffer
+var iBufferIdx;                     // current index of element buffer
+var tBufferIdx;                     // current index of texture buffer
 
 const NUM_VERTS = 50000;
 const VERT_DATA_SIZE = 12;          // each vertex = (3 axes) * sizeof(float)
 const NORMAL_DATA_SIZE = VERT_DATA_SIZE;
-const COLOR_DATA_SIZE = 16;         // each vertex = (4 colors) * sizeof(float)
+const TEXTURE_DATA_SIZE = 8;        // each vertex = (2 axes) * sizeof(float)
 
 const NUM_ELEMS = 40000;  
 const ELEM_DATA_SIZE = Uint16Array.BYTES_PER_ELEMENT;
@@ -69,6 +71,7 @@ function Mesh()
     this.vertIdx = -1;
     this.normIdx = -1;
     this.elemIdx = -1;
+    this.texIdx  = -1;
     this.triangleCnt = 0;
 }
 
@@ -92,6 +95,17 @@ Mesh.prototype.addNormal = function(p)
         this.normIdx = nBufferIdx;
     }
     nBufferIdx++;
+}
+
+Mesh.prototype.addTexPos = function(p)
+{
+    gl.bindBuffer(gl.ARRAY_BUFFER, tBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, tBufferIdx * TEXTURE_DATA_SIZE, flatten(p));
+    if (this.texIdx == -1) {
+        // start of object
+        this.texIdx = tBufferIdx;
+    }
+    tBufferIdx++;
 }
 
 Mesh.prototype.addTriangle = function(p0, p1, p2)
@@ -130,8 +144,8 @@ function CADObject(name, mesh)
 
     // lighting material properties
     this.ambient  = vec4(0.25, 0.25, 0.25, 1.0);
-    this.diffuse  = vec4(0.0, 0.5, 1.0, 1.0);
-    this.specular = vec4(0.5, 0.5, 0.5, 1.0);
+    this.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
+    this.specular = vec4(0.2, 0.2, 0.2, 1.0);
     this.shininess = 15.0;
 
     // object in world space
@@ -250,7 +264,9 @@ Sphere.prototype.addVertices = function()
     // send final vertices to GPU buffer
     for (var i = 0; i < this.vert.length; ++i) {
         this.addPoint(this.vert[i]);
-        this.addNormal(normalize(this.vert[i]));
+        this.addNormal(this.vert[i]);
+
+        this.addTexPos(this.getTexCoords(this.vert[i]));
     }
  
     // send triangles to element buffer
@@ -265,6 +281,15 @@ Sphere.prototype.addVertices = function()
 Sphere.prototype.draw = function() 
 {
     gl.drawElements(gl.TRIANGLES, this.elemCnt, gl.UNSIGNED_SHORT, this.elemIdx * ELEM_DATA_SIZE);
+}
+
+Sphere.prototype.getTexCoords = function(vert)
+{
+    // determine theta and phi from x, y, z
+    var theta = Math.acos(vert[0]);
+    var phi = Math.acos(vert[1] / Math.sin(theta));
+    var coords = [theta / (2.0 * Math.PI) + 0.5, phi / (2.0 * Math.PI) + 0.5];
+    return coords;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -313,6 +338,16 @@ window.onload = function init()
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, NUM_ELEMS * ELEM_DATA_SIZE, gl.STATIC_DRAW); 
     iBufferIdx = 0;
+    
+    // texture buffer:
+    tBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, tBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, NUM_VERTS * TEXTURE_DATA_SIZE, gl.STATIC_DRAW);
+    tBufferIdx = 0;
+    // Associate shader variables with our data buffer
+    var vTexCoord = gl.getAttribLocation(program, "vTexCoord");
+    gl.vertexAttribPointer(vTexCoord, 2, gl.FLOAT, false, 2 * 4, 0);
+    gl.enableVertexAttribArray(vTexCoord);
 
     mvMatrixLoc = gl.getUniformLocation(program, 'mvMatrix');
     prMatrixLoc = gl.getUniformLocation(program, 'prMatrix');
@@ -352,19 +387,26 @@ window.onload = function init()
     light.ambient  = vec4(0.1, 0.1, 0.1, 1.0);
     light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(0.0, 300.0, 1500.0, 1.0);
+    light.pos = vec4(-2000.0, 0.0, 1500.0, 1.0);
     lights.push(light);
 
     // default objects on canvas
     create_new_obj('sphere');
     currObj.scale = [200, 200, 200];
     currObj.translate = [0, 0, 0];
+    currObj.rotate = [0, 0, 15];
     // currObj.ambient  = vec4(0.3, 0.3, 0.3, 1.0);
-    currObj.diffuse  = vec4(0.1, 0.7, 1.0, 1.0);
-    currObj.specular = vec4(0.0, 0.0, 0.0, 1.0);
     currObj.shininess = 10;
     cur_obj_set_controls();
 
+    //var image = gen_checkboard();
+    var image = new Image();
+    image.onload = function() {
+        configureTexture(image);
+        gl.uniform1i(gl.getUniformLocation(program, 'texture'), 0);
+    }
+    image.src = "earthmap1k.jpg";
+    
     render();
 }
 
@@ -380,7 +422,6 @@ function create_new_obj(objType)
 
     objs.push(new CADObject(name, meshes[type]));
     currObj = objs[objs.length - 1];
-    currObj.diffuse = vec4(0.2, 0.5, 1.0, 1.0);
     currObj.scale = [50, 50, 50];
     currObj.translate = camAt.slice();
     cur_obj_set_controls();
@@ -472,6 +513,50 @@ function cam_change()
 }
 
 //-------------------------------------------------------------------------------------------------
+function gen_checkboard()
+{
+    var texSize = 512;
+    var numChecks = 63;
+
+    var image = new Uint8Array(4 * texSize * texSize);
+    for ( var i = 0; i < texSize; i++ ) {
+        for ( var j = 0; j <texSize; j++ ) {
+            var patchx = Math.floor(i / (texSize / numChecks));
+            var patchy = Math.floor(j / (texSize / numChecks));
+            var c;
+            if ((patchx % 2) ^ (patchy % 2)) {
+                c = 255;
+            } else {
+                c = 0;
+            }
+            image[4 * i * texSize + 4 * j]     = c;
+            image[4 * i * texSize + 4 * j + 1] = c;
+            image[4 * i * texSize + 4 * j + 2] = c; 
+            image[4 * i * texSize + 4 * j + 3] = 255;
+        }
+    }
+    return image;
+}
+
+//-------------------------------------------------------------------------------------------------
+function configureTexture(image) 
+{
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    //gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    //gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    //gl.generateMipmap(gl.TEXTURE_2D);
+    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.activeTexture(gl.TEXTURE0);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+//-------------------------------------------------------------------------------------------------
 function render()
 {
     var cam = lookAt(camEye, camAt, [0, 1, 0]);
@@ -488,8 +573,9 @@ function render()
     
     // light 
     //lights[0].rotate[0] += 0.1;
-    lights[0].rotate[1] += 1.0;
+    //lights[0].rotate[1] += 1.0;
     //lights[0].rotate[2] += 0.1;
+    objs[0].rotate[1] += 0.2
 
     // iterate over all objects, do model-view transformation
     for (var i = 0; i < objs.length; ++i) {
