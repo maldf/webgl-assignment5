@@ -15,7 +15,7 @@ varying vec3 N, L, E;
 uniform mat4 mvMatrix;
 uniform mat4 prMatrix;
 uniform vec4 lightPosition;
-varying vec2 tex;
+varying vec2 texCoord;
 
 void main() 
 {
@@ -29,7 +29,7 @@ void main()
     L = normalize(light - pos);
     
     gl_Position = prMatrix * mvMatrix * vPosition;
-    tex = vTexCoord;
+    texCoord = vTexCoord;
 }
 </script>
 
@@ -40,11 +40,13 @@ precision mediump float;
 uniform vec4 ambientProduct, diffuseProduct, specularProduct;
 uniform float shininess;
 varying vec3 N, L, E;
-varying vec2 tex;
-uniform sampler2D texture;
+varying vec2 texCoord;
+uniform sampler2D sampler[4];
+uniform bool texEnable[4];  // 0 is ignored, always enabled
 
 void main()
 {
+    //int i;
     vec4 fColor;
     
     vec3 H = normalize(L + E);
@@ -61,8 +63,13 @@ void main()
     fColor = ambient + diffuse + specular;
     fColor.a = 1.0;
     
-    //gl_FragColor = fColor / 100.0;
-    gl_FragColor = fColor * texture2D(texture, tex);
+    gl_FragColor = fColor * texture2D(sampler[0], texCoord);
+    for (int i = 1; i < 4; i++) {
+        if (texEnable[i]) {
+            vec4 p = texture2D(sampler[i], texCoord);
+            gl_FragColor += fColor * p;
+        }
+    }
 }
 </script>
 
@@ -78,7 +85,7 @@ void main()
         <h4 id="heading">WebGL Assignment 5: Texture Mapping to a Sphere</h4>
     </div>
 
-    <canvas id="gl-canvas" width="768" height="768">
+    <canvas id="gl-canvas" width="1024" height="768">
         Oops ... your browser doesn't support the HTML5 canvas element
     </canvas>
 
@@ -114,9 +121,17 @@ void main()
                 </td>
             </tr>
             <tr>
-                <td>Lights</td>
+                <td>Controls</td>
                 <td>
                     <input id="cb-light" type="checkbox" checked>Light
+                    <input id="cb-checkerboard" type="checkbox">Checkerboard
+                </td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>
+                    <input id="cb-clouds" type="checkbox">Weather
+                    <input id="cb-borders" type="checkbox">Borders
                 </td>
             </tr>
             <tr>

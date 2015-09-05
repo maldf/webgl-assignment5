@@ -29,6 +29,8 @@ var prMatrixLoc;
 var ambientPrLoc, diffusePrLoc, specularPrLoc;
 var lightPosLoc;
 var shininessLoc;
+var samplerLoc;
+var texEnableLoc;
 
 var camEye;
 var camAt;
@@ -38,6 +40,10 @@ var rotateMax = [360, 360, 360];
 var rotateMin = negate(rotateMax);
 
 var animate = true;
+var textureCnt = 0;
+
+var checkboardIdx;
+var earthIdx, cloudsIdx, bordersIdx;
 
 //-------------------------------------------------------------------------------------------------
 function Light() 
@@ -253,17 +259,16 @@ Sphere.prototype.addVertices = function()
         var n2 = spherical_to_cartesian(theta2, phi_north);
         // construct 2 triangles
         addTriangle.call(this, south, s2, s1);
-        this.addTexPos([0.5, 1]);
+        this.addTexPos([(theta1 + theta2) / (4 * Math.PI), 1]);
         this.addTexPos(getTexCoords(theta2, phi_south));
         this.addTexPos(getTexCoords(theta1, phi_south));
         addTriangle.call(this, north, n1, n2);
-        this.addTexPos([0.5, 0]);
+        this.addTexPos([(theta1 + theta2) / (4 * Math.PI), 0]);
         this.addTexPos(getTexCoords(theta1, phi_north));
         this.addTexPos(getTexCoords(theta2, phi_north));
     }
  
     // send triangles to element buffer
-    console.log(topo.length);
     this.addTopology(topo);
     this.elemCnt = topo.length;
 }
@@ -272,19 +277,6 @@ Sphere.prototype.draw = function()
 {
     gl.drawElements(gl.TRIANGLES, this.elemCnt, gl.UNSIGNED_SHORT, this.elemIdx * ELEM_DATA_SIZE);
 }
-
-/*
-Sphere.prototype.getTextCoords = function(vert) 
-{
-    // determine theta and phi from x, y, z
-    var theta = Math.atan2(-vert[2], vert[0]);
-    var phi   = Math.acos(vert[1]);
-    // map to [0,1] texture square
-    var s = (theta / (2.0 * Math.PI)) +  0.5;
-    var t = (phi / Math.PI);
-    return [s, t];
-}
-*/
 
 //-------------------------------------------------------------------------------------------------
 window.onload = function init()
@@ -343,13 +335,15 @@ window.onload = function init()
     gl.vertexAttribPointer(vTexCoord, 2, gl.FLOAT, false, 2 * 4, 0);
     gl.enableVertexAttribArray(vTexCoord);
 
-    mvMatrixLoc = gl.getUniformLocation(program, 'mvMatrix');
-    prMatrixLoc = gl.getUniformLocation(program, 'prMatrix');
-    ambientPrLoc = gl.getUniformLocation(program, 'ambientProduct');
-    diffusePrLoc = gl.getUniformLocation(program, 'diffuseProduct');
+    mvMatrixLoc   = gl.getUniformLocation(program, 'mvMatrix');
+    prMatrixLoc   = gl.getUniformLocation(program, 'prMatrix');
+    ambientPrLoc  = gl.getUniformLocation(program, 'ambientProduct');
+    diffusePrLoc  = gl.getUniformLocation(program, 'diffuseProduct');
     specularPrLoc = gl.getUniformLocation(program, 'specularProduct');
-    lightPosLoc = gl.getUniformLocation(program, 'lightPosition');
-    shininessLoc = gl.getUniformLocation(program, 'shininess');
+    lightPosLoc   = gl.getUniformLocation(program, 'lightPosition');
+    shininessLoc  = gl.getUniformLocation(program, 'shininess');
+    samplerLoc    = gl.getUniformLocation(program, 'sampler');
+    texEnableLoc  = gl.getUniformLocation(program, 'texEnable');
     
     // Create meshes
     meshes['sphere'] = new Sphere();
@@ -378,10 +372,10 @@ window.onload = function init()
     
     // lights
     var light = new Light();
-    light.ambient  = vec4(0.1, 0.1, 0.1, 1.0);
+    light.ambient  = vec4(0.2, 0.2, 0.2, 1.0);
     light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(-60e6, 0.0, 150e6, 1.0);
+    light.pos = vec4(-100e6, 0.0, 150e6, 1.0);
     lights.push(light);
 
     // default objects on canvas
@@ -390,16 +384,35 @@ window.onload = function init()
     currObj.translate = [0, 0, 0];
     currObj.rotate = [0, 0, 15];
     // currObj.ambient  = vec4(0.3, 0.3, 0.3, 1.0);
-    currObj.shininess = 50;
+    currObj.shininess = 100;
     cur_obj_set_controls();
 
-    //var image = gen_checkboard();
-    var image = new Image();
-    image.onload = function() {
-        configureTexture(image);
-        gl.uniform1i(gl.getUniformLocation(program, 'texture'), 0);
+    // Textures
+    checkboardIdx = configureTexture(gen_checkboard(), true);
+
+    {
+        var img1 = new Image();
+        img1.src = "textures/2_no_clouds_8k.jpg";
+        img1.onload = function() {
+            earthIdx = configureTexture(img1, false);
+        }
+        var img2 = new Image();
+        img2.src = "textures/fair_clouds_8k.jpg";
+        img2.onload = function() {
+            cloudsIdx = configureTexture(img2, false);
+        }
+        var img3 = new Image();
+        img3.src = "textures/boundaries_8k.png";
+        img3.onload = function() {
+            bordersIdx = configureTexture(img3, false);
+        }
+        
+        //image.src = "textures/earth_8k.jpg";
+        //image.src = "textures/2_no_clouds_8k.jpg";
+        //image.src = "textures/boundaries_8k.png";
+        //image.src = "textures/storm_clouds_8k.jpg";
+        //image.src = "textures/5_night_8k.jpg";
     }
-    image.src = "earth_8k.jpg";
     
     render();
 }
@@ -510,7 +523,7 @@ function cam_change()
 function gen_checkboard()
 {
     var texSize = 512;
-    var numChecks = 63;
+    var numChecks = 32;
 
     var image = new Uint8Array(4 * texSize * texSize);
     for ( var i = 0; i < texSize; i++ ) {
@@ -533,21 +546,37 @@ function gen_checkboard()
 }
 
 //-------------------------------------------------------------------------------------------------
-function configureTexture(image) 
+function configureTexture(image, synthetic) 
 {
+    gl.activeTexture(gl.TEXTURE0 + textureCnt);
+    textureCnt++;
+    
     var texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    //gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    //gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    
+    if (synthetic) {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        // TODO: assume img is square
+        var size = Math.sqrt(image.length / 4);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    } else {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
     gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.activeTexture(gl.TEXTURE0);
 
     //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    return textureCnt - 1;
 }
+
+var texEnable   = [true, false, false, false];
+var textureUnit = [0, 0, 0, 0];
 
 //-------------------------------------------------------------------------------------------------
 function render()
@@ -556,19 +585,35 @@ function render()
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
     if (document.getElementById('radio-proj-perspective').checked) {
-        var pr = perspective(22, 1, 1, 1000000);
+        var pr = perspective(22, 1.3333, 1, 1000000);
     } else {
-        var pr = ortho(-6500, 6500, -6500, 6500, 0, 1000000);
+        var pr = ortho(-8680, 8680, -6500, 6500, 0, 1000000);
     }
     gl.uniformMatrix4fv(prMatrixLoc, gl.FALSE, flatten(pr));
     
     var cb_light = document.getElementById('cb-light');
     
-    // light 
-    //lights[0].rotate[0] += 0.1;
-    //lights[0].rotate[1] += 1.0;
-    //lights[0].rotate[2] += 0.1;
-    objs[0].rotate[1] += 0.2;
+    if (animate) {
+        objs[0].rotate[1] += 0.2;
+    }
+
+    if (document.getElementById('cb-checkerboard').checked) {
+        texEnable[0] = true;
+        texEnable[1] = false;
+        texEnable[2] = false;
+        texEnable[3] = false;
+        textureUnit[0] = checkboardIdx;
+    } else {
+        texEnable[0] = true;
+        texEnable[1] = document.getElementById('cb-clouds').checked;
+        texEnable[2] = document.getElementById('cb-borders').checked;
+        texEnable[3] = false;
+        textureUnit[0] = earthIdx;
+        textureUnit[1] = cloudsIdx;
+        textureUnit[2] = bordersIdx;
+    }
+    gl.uniform1iv(texEnableLoc, texEnable);
+    gl.uniform1iv(samplerLoc, textureUnit);
 
     // iterate over all objects, do model-view transformation
     for (var i = 0; i < objs.length; ++i) {
@@ -604,9 +649,6 @@ function render()
         objs[i].mesh.draw();
     }
 
-    // testing
-    if (animate) {
-        requestAnimFrame(render);
-    }
+    requestAnimFrame(render);
 }
 
