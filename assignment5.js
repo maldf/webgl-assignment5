@@ -170,112 +170,102 @@ CADObject.prototype.transform = function(camera)
 }
 
 //-------------------------------------------------------------------------------------------------
-function Sphere(recurse) {
+function Sphere(resolution) {
     Mesh.call(this);
-    this.recurse = recurse || 3;
+    this.resolution = resolution || 64;
 }
 Sphere.prototype = Object.create(Mesh.prototype);
 
-Sphere.prototype.addMeshPoint = function(p) 
-{
-    // add points normalized to unit circle length
-    normalize(p);
-    // only add new points; if point already exists, return its index
-    for (var i = 0; i < this.vert.length; ++i) {
-        if (equal(this.vert[i], p)) {
-            return i;
-        }
-    }
-    this.vert.push(p);
-    // return vertex index
-    return this.vert.length - 1;
-}
-
 Sphere.prototype.addVertices = function() 
 {
-    // create sphere from icosahedron, ref:
-    // http://blog.andreaskahler.com/2009/06/creating-icosphere-mesh-in-code.html
-    
-    // create 12 vertices of a icosahedron
-    var t = (1.0 + Math.sqrt(5.0)) / 2.0;
-    this.vert = [];
-    this.addMeshPoint([-1,  t,  0]);
-    this.addMeshPoint([ 1,  t,  0]);
-    this.addMeshPoint([-1, -t,  0]);
-    this.addMeshPoint([ 1, -t,  0]);
-
-    this.addMeshPoint([ 0, -1,  t]);
-    this.addMeshPoint([ 0,  1,  t]);
-    this.addMeshPoint([ 0, -1, -t]);
-    this.addMeshPoint([ 0,  1, -t]);
-
-    this.addMeshPoint([ t,  0, -1]);
-    this.addMeshPoint([ t,  0,  1]);
-    this.addMeshPoint([-t,  0, -1]);
-    this.addMeshPoint([-t,  0,  1]);
-   
-    var faces = [];
-    // 5 faces around point 0
-    faces.push([0, 11, 5]);
-    faces.push([0, 5, 1]);
-    faces.push([0, 1, 7]);
-    faces.push([0, 7, 10]);
-    faces.push([0, 10, 11]);
-
-    // 5 adjacent faces
-    faces.push([1, 5, 9]);
-    faces.push([5, 11, 4]);
-    faces.push([11, 10, 2]);
-    faces.push([10, 7, 6]);
-    faces.push([7, 1, 8]);
-
-    // 5 faces around point 3
-    faces.push([3, 9, 4]);
-    faces.push([3, 4, 2]);
-    faces.push([3, 2, 6]);
-    faces.push([3, 6, 8]);
-    faces.push([3, 8, 9]);
-
-    // 5 adjacent faces
-    faces.push([4, 9, 5]);
-    faces.push([2, 4, 11]);
-    faces.push([6, 2, 10]);
-    faces.push([8, 6, 7]);
-    faces.push([9, 8, 1]);
-
-    // refine triangles
-    for (var i = 0; i < this.recurse; ++i) {
-        var faces2 = [];
-        for (var j = 0; j < faces.length; ++j) {
-            var tri = faces[j];
-            // replace triangle by 4 triangles
-            var a = this.addMeshPoint(mix(this.vert[tri[0]], this.vert[tri[1]], 0.5));
-            var b = this.addMeshPoint(mix(this.vert[tri[1]], this.vert[tri[2]], 0.5));
-            var c = this.addMeshPoint(mix(this.vert[tri[2]], this.vert[tri[0]], 0.5));
-
-            faces2.push([tri[0], a, c]);
-            faces2.push([tri[1], b, a]);
-            faces2.push([tri[2], c, b]);
-            faces2.push([a, b, c]);
-        }
-        faces = faces2;
+    function spherical_to_cartesian(theta, phi)
+    {
+        // phi is angle from xz-plane, need angle from y-axis
+        var rho = Math.PI / 2 - phi;
+        var x = Math.sin(rho) * Math.sin(theta);
+        var y = Math.cos(rho);
+        var z = Math.sin(rho) * Math.cos(theta);
+        return [x, y, z];
     }
-    
-    // send final vertices to GPU buffer
-    for (var i = 0; i < this.vert.length; ++i) {
-        this.addPoint(this.vert[i]);
-        this.addNormal(this.vert[i]);
+    function addTriangle(a, b, c)
+    {
+        var p0 = this.vert.length;
+        this.vert.push(a);
+        var p1 = p0 + 1; 
+        this.vert.push(b);
+        var p2 = p1 + 1; 
+        this.vert.push(c);
+        topo.push(p0);
+        topo.push(p1);
+        topo.push(p2);
+        this.addPoint(this.vert[p0]);
+        this.addPoint(this.vert[p1]);
+        this.addPoint(this.vert[p2]);
+        this.addNormal(this.vert[p0]);
+        this.addNormal(this.vert[p1]);
+        this.addNormal(this.vert[p2]);
+    }
+    function getTexCoords(theta, phi)
+    {
+        // map to [0,1]x[0,1] texture square
+        var s = (theta / (2.0 * Math.PI));
+        var t = 0.5 - (phi / Math.PI);
+        return [s, t];
+    }
 
-        this.addTexPos(this.getTexCoords(this.vert[i]));
+    var CNT = this.resolution;
+    this.vert = [];
+    var topo = [];
+    for (var lat = - (CNT / 2) + 1; lat < CNT / 2 - 1; ++lat) {
+        var phi1 = lat / (CNT / 2) * (Math.PI / 2);
+        var phi2 = (lat + 1) / (CNT / 2) * (Math.PI / 2);
+        for (var lon  = 0; lon < CNT; ++lon) {
+            var theta1 = (lon / CNT) * 2 * Math.PI;
+            var theta2 = ((lon  + 1) / CNT) * 2 * Math.PI;
+            // 4 points of quad
+            var a = spherical_to_cartesian(theta1, phi1);
+            var b = spherical_to_cartesian(theta2, phi1);
+            var c = spherical_to_cartesian(theta1, phi2);
+            var d = spherical_to_cartesian(theta2, phi2);
+            // construct 2 triangles
+            addTriangle.call(this, a, b, d);
+            this.addTexPos(getTexCoords(theta1, phi1));
+            this.addTexPos(getTexCoords(theta2, phi1));
+            this.addTexPos(getTexCoords(theta2, phi2));
+            addTriangle.call(this, a, d, c);
+            this.addTexPos(getTexCoords(theta1, phi1));
+            this.addTexPos(getTexCoords(theta2, phi2));
+            this.addTexPos(getTexCoords(theta1, phi2));
+        }
+    }
+    // add caps
+    var south = [0, -1, 0];
+    var north = [0,  1, 0];
+    var phi_south = (-(CNT / 2) + 1) / (CNT / 2) * (Math.PI / 2);
+    var phi_north = ((CNT / 2) - 1) / (CNT / 2) * (Math.PI / 2);
+    for (var lon  = 0; lon < CNT; ++lon) {
+        var theta1 = (lon / CNT) * 2 * Math.PI;
+        var theta2 = ((lon  + 1) / CNT) * 2 * Math.PI;
+        // 4 points of quad
+        var s1 = spherical_to_cartesian(theta1, phi_south);
+        var s2 = spherical_to_cartesian(theta2, phi_south);
+        var n1 = spherical_to_cartesian(theta1, phi_north);
+        var n2 = spherical_to_cartesian(theta2, phi_north);
+        // construct 2 triangles
+        addTriangle.call(this, south, s2, s1);
+        this.addTexPos([0.5, 1]);
+        this.addTexPos(getTexCoords(theta2, phi_south));
+        this.addTexPos(getTexCoords(theta1, phi_south));
+        addTriangle.call(this, north, n1, n2);
+        this.addTexPos([0.5, 0]);
+        this.addTexPos(getTexCoords(theta1, phi_north));
+        this.addTexPos(getTexCoords(theta2, phi_north));
     }
  
     // send triangles to element buffer
-    var topo = [];
-    for (var i = 0; i < faces.length; ++i) {
-        topo = topo.concat(faces[i]);
-    }
+    console.log(topo.length);
     this.addTopology(topo);
-    this.elemCnt = faces.length * 3;
+    this.elemCnt = topo.length;
 }
 
 Sphere.prototype.draw = function() 
@@ -283,14 +273,18 @@ Sphere.prototype.draw = function()
     gl.drawElements(gl.TRIANGLES, this.elemCnt, gl.UNSIGNED_SHORT, this.elemIdx * ELEM_DATA_SIZE);
 }
 
-Sphere.prototype.getTexCoords = function(vert)
+/*
+Sphere.prototype.getTextCoords = function(vert) 
 {
     // determine theta and phi from x, y, z
-    var theta = Math.acos(vert[0]);
-    var phi = Math.acos(vert[1] / Math.sin(theta));
-    var coords = [theta / (2.0 * Math.PI) + 0.5, phi / (2.0 * Math.PI) + 0.5];
-    return coords;
+    var theta = Math.atan2(-vert[2], vert[0]);
+    var phi   = Math.acos(vert[1]);
+    // map to [0,1] texture square
+    var s = (theta / (2.0 * Math.PI)) +  0.5;
+    var t = (phi / Math.PI);
+    return [s, t];
 }
+*/
 
 //-------------------------------------------------------------------------------------------------
 window.onload = function init()
@@ -358,7 +352,7 @@ window.onload = function init()
     shininessLoc = gl.getUniformLocation(program, 'shininess');
     
     // Create meshes
-    meshes['sphere'] = new Sphere(4);
+    meshes['sphere'] = new Sphere();
     for (var key in meshes) {
         if (meshes.hasOwnProperty(key)) {
             meshes[key].addVertices();
@@ -387,16 +381,16 @@ window.onload = function init()
     light.ambient  = vec4(0.1, 0.1, 0.1, 1.0);
     light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(-2000.0, 0.0, 1500.0, 1.0);
+    light.pos = vec4(-60e6, 0.0, 150e6, 1.0);
     lights.push(light);
 
     // default objects on canvas
     create_new_obj('sphere');
-    currObj.scale = [200, 200, 200];
+    currObj.scale = [6378, 6360, 6378];
     currObj.translate = [0, 0, 0];
     currObj.rotate = [0, 0, 15];
     // currObj.ambient  = vec4(0.3, 0.3, 0.3, 1.0);
-    currObj.shininess = 10;
+    currObj.shininess = 50;
     cur_obj_set_controls();
 
     //var image = gen_checkboard();
@@ -405,7 +399,7 @@ window.onload = function init()
         configureTexture(image);
         gl.uniform1i(gl.getUniformLocation(program, 'texture'), 0);
     }
-    image.src = "earthmap1k.jpg";
+    image.src = "earth_8k.jpg";
     
     render();
 }
@@ -434,7 +428,7 @@ function reset_scene()
     currObj = null;
     objCount = 0;
 
-    camEye = [0, 0, 300];
+    camEye = [0, 10000, 35000];
     camAt  = [0, 0, 0];
     cam_set();
 }
@@ -546,14 +540,13 @@ function configureTexture(image)
     //gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     //gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    //gl.generateMipmap(gl.TEXTURE_2D);
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.activeTexture(gl.TEXTURE0);
 
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -563,9 +556,9 @@ function render()
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
     if (document.getElementById('radio-proj-perspective').checked) {
-        var pr = perspective(90, 2, 1, 10000);
+        var pr = perspective(22, 1, 1, 1000000);
     } else {
-        var pr = ortho(-2000, 2000, -1000, 1000, -2000, 2000);
+        var pr = ortho(-6500, 6500, -6500, 6500, 0, 1000000);
     }
     gl.uniformMatrix4fv(prMatrixLoc, gl.FALSE, flatten(pr));
     
@@ -575,7 +568,7 @@ function render()
     //lights[0].rotate[0] += 0.1;
     //lights[0].rotate[1] += 1.0;
     //lights[0].rotate[2] += 0.1;
-    objs[0].rotate[1] += 0.2
+    objs[0].rotate[1] += 0.2;
 
     // iterate over all objects, do model-view transformation
     for (var i = 0; i < objs.length; ++i) {
@@ -613,7 +606,7 @@ function render()
 
     // testing
     if (animate) {
-        //requestAnimFrame(render);
+        requestAnimFrame(render);
     }
 }
 
