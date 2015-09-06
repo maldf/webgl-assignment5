@@ -30,13 +30,14 @@ var lightPosLoc;
 var shininessLoc;
 var samplerLoc;
 var texEnableLoc;
+var lightEnableLoc;
 
 // camera
 var camEye;
 var camAt;
 var up;
 const EARTH_RADIUS = 6378;
-const ZOOM_MIN = 7000.0;
+const ZOOM_MIN = 8000.0;
 const ZOOM_MAX = 70000.0;
 
 var mouse_btn = false;              // state of mouse button
@@ -55,11 +56,14 @@ function Light()
     this.pos = vec4(1000.0, 0.0, 0.0, 1.0);
 }
 
-Light.prototype.transform = function(cam)
+Light.prototype.transform = function(camera)
 {
-    // get light position relative to camera position
-    var lpos = cam; //translate(negate(cam));     
-    return lpos;
+    // transform from instance -> world coordinates
+    var t = translate(this.pos[0], this.pos[1], this.pos[2]);
+    // combine with camera transformation to create model-view matrix
+    var mv = mult(camera, t);
+    var lightPosVec = mat_vec_mult(mv, vec4(0, 0, 0, 1));
+    return lightPosVec;
 }
 
 var lights = [];
@@ -330,15 +334,16 @@ window.onload = function init()
     gl.vertexAttribPointer(vTexCoord, 2, gl.FLOAT, false, 2 * 4, 0);
     gl.enableVertexAttribArray(vTexCoord);
 
-    mvMatrixLoc   = gl.getUniformLocation(program, 'mvMatrix');
-    prMatrixLoc   = gl.getUniformLocation(program, 'prMatrix');
-    ambientPrLoc  = gl.getUniformLocation(program, 'ambientProduct');
-    diffusePrLoc  = gl.getUniformLocation(program, 'diffuseProduct');
-    specularPrLoc = gl.getUniformLocation(program, 'specularProduct');
-    lightPosLoc   = gl.getUniformLocation(program, 'lightPosition');
-    shininessLoc  = gl.getUniformLocation(program, 'shininess');
-    samplerLoc    = gl.getUniformLocation(program, 'sampler');
-    texEnableLoc  = gl.getUniformLocation(program, 'texEnable');
+    mvMatrixLoc    = gl.getUniformLocation(program, 'mvMatrix');
+    prMatrixLoc    = gl.getUniformLocation(program, 'prMatrix');
+    ambientPrLoc   = gl.getUniformLocation(program, 'ambientProduct');
+    diffusePrLoc   = gl.getUniformLocation(program, 'diffuseProduct');
+    specularPrLoc  = gl.getUniformLocation(program, 'specularProduct');
+    lightPosLoc    = gl.getUniformLocation(program, 'lightPosition');
+    shininessLoc   = gl.getUniformLocation(program, 'shininess');
+    samplerLoc     = gl.getUniformLocation(program, 'sampler');
+    texEnableLoc   = gl.getUniformLocation(program, 'texEnable');
+    lightEnableLoc = gl.getUniformLocation(program, 'lightEnable');
     
     // Create meshes
     meshes['sphere'] = new Sphere();
@@ -359,9 +364,9 @@ window.onload = function init()
     // lights
     var light = new Light();
     light.ambient  = vec4(0.2, 0.2, 0.2, 1.0);
-    light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
+    light.diffuse  = vec4(0.8, 0.8, 0.8, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(0, 0.0, 150e6, 1.0);
+    light.pos = vec4(50e6, 0.0, 140e6, 1.0);
     lights.push(light);
 
     // default objects on canvas
@@ -369,7 +374,7 @@ window.onload = function init()
     currObj.scale = [EARTH_RADIUS, EARTH_RADIUS - 18, EARTH_RADIUS];
     currObj.translate = [0, 0, 0];
     currObj.rotate = [0, 0, 15];
-    currObj.diffuse   = vec4(0.7, 0.7, 0.7, 1.0);
+    currObj.diffuse   = vec4(1.0, 1.0, 1.0, 1.0);
     currObj.specular  = vec4(0.2, 0.2, 0.2, 1.0);
     currObj.shininess = 20.0;
     
@@ -393,7 +398,7 @@ window.onload = function init()
             bordersIdx = configureTexture(img3, false);
         }
         var img4 = new Image();
-        img4.src = "textures/water_8k.png";
+        img4.src = "textures/cities_8k.png";
         img4.onload = function() {
             waterIdx = configureTexture(img4, false);
         }
@@ -418,7 +423,7 @@ function create_new_obj(objType)
 //-------------------------------------------------------------------------------------------------
 function reset_scene()
 {
-    camEye = [0, 0, 36000];
+    camEye = [-20000, 2000, 30000];
     camAt  = [0, 0, 0];
     up = [0, 1, 0];
 }
@@ -430,11 +435,10 @@ function mat_vec_mult(mat, vec)
     if (vec.length == 3) {
         v.push(1);
     }
-    var m = transpose(mat);
-    var res = [dot(m[0], v),
-               dot(m[1], v),
-               dot(m[2], v),
-               dot(m[3], v)];
+    var res = [dot(mat[0], v),
+               dot(mat[1], v),
+               dot(mat[2], v),
+               dot(mat[3], v)];
 
     if (vec.length == 3) {
         res.pop();
@@ -465,12 +469,12 @@ function mouse_move(ev)
         newup = subtract(up, scale(dot(up, newup), newup));
         if (dx) {
             //rotate left/right: around newup
-            camEye = mat_vec_mult(rotate(-dx * angle_scale, newup), camEye);
+            camEye = mat_vec_mult(rotate(dx * angle_scale, newup), camEye);
         } 
         if (dy) {
             // rotate up/down: around vec normal to current view plane
             var dir = cross(camEye, up);
-            camEye = mat_vec_mult(rotate(-dy * angle_scale, dir), camEye);
+            camEye = mat_vec_mult(rotate(dy * angle_scale, dir), camEye);
             // change up to new up
             up = newup;
         }
@@ -553,8 +557,6 @@ function configureTexture(image, synthetic)
 var texEnable   = [true, false, false, false];
 var textureUnit = [0, 0, 0, 0];
 
-var clcnt = 1000;
-
 //-------------------------------------------------------------------------------------------------
 function render()
 {
@@ -566,6 +568,7 @@ function render()
     gl.uniformMatrix4fv(prMatrixLoc, gl.FALSE, flatten(pr));
     
     var cb_light = document.getElementById('cb-light');
+    gl.uniform1i(lightEnableLoc, cb_light.checked);
     
     if (document.getElementById('cb-animate').checked) {
         objs[0].rotate[1] += 0.1;
@@ -581,7 +584,7 @@ function render()
         texEnable[0] = true;
         texEnable[1] = document.getElementById('cb-clouds').checked;
         texEnable[2] = document.getElementById('cb-borders').checked;
-        texEnable[3] = false;
+        texEnable[3] = cb_light.checked;
         textureUnit[0] = earthIdx;
         textureUnit[1] = cloudsIdx;
         textureUnit[2] = bordersIdx;
@@ -597,21 +600,19 @@ function render()
         var specularPr = [];
         var lightPos   = [];
         for (var j = 0; j < lights.length; ++j) {
-            var lmv = lights[j].transform(cam);
-            var lightPosVec = mat_vec_mult(lmv, lights[j].pos);
-            if (++clcnt > 1000) {
-                clcnt = 0;
-                console.log(lightPosVec);
-            }
+            var lightPosVec = lights[j].transform(cam);
             
             ambientPr = ambientPr.concat(mult(lights[j].ambient, objs[i].ambient));
-            if (cb_light.checked) {
+            if (1) {
                 diffusePr = diffusePr.concat(mult(lights[j].diffuse, objs[i].diffuse));
                 specularPr = specularPr.concat(mult(lights[j].specular, objs[i].specular));
-            } else {
+            } 
+            /* 
+            else {
                 diffusePr = diffusePr.concat([0.0, 0.0, 0.0, 1.0]);
                 specularPr = specularPr.concat([0.0, 0.0, 0.0, 1.0]);
             }
+            */
             lightPos = lightPos.concat(lightPosVec);
         }
         gl.uniform4fv(ambientPrLoc, flatten(ambientPr));
