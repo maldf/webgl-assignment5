@@ -11,17 +11,16 @@ var nBufferIdx;                     // current index of normal buffer
 var iBufferIdx;                     // current index of element buffer
 var tBufferIdx;                     // current index of texture buffer
 
-const NUM_VERTS = 50000;
+const NUM_VERTS = 100000;
 const VERT_DATA_SIZE = 12;          // each vertex = (3 axes) * sizeof(float)
 const NORMAL_DATA_SIZE = VERT_DATA_SIZE;
 const TEXTURE_DATA_SIZE = 8;        // each vertex = (2 axes) * sizeof(float)
 
-const NUM_ELEMS = 40000;  
+const NUM_ELEMS = 120000;  
 const ELEM_DATA_SIZE = Uint16Array.BYTES_PER_ELEMENT;
 
 var objs = [];
 var meshes = [];
-var objCount = 0;
 var currObj = null;
 
 var mvMatrixLoc;
@@ -32,18 +31,19 @@ var shininessLoc;
 var samplerLoc;
 var texEnableLoc;
 
+// camera
 var camEye;
 var camAt;
+var up;
+const EARTH_RADIUS = 6378;
+const ZOOM_MIN = 7000.0;
+const ZOOM_MAX = 70000.0;
 
-var rotateMax = [360, 360, 360];
-
-var rotateMin = negate(rotateMax);
-
-var animate = true;
+var mouse_btn = false;              // state of mouse button
 var textureCnt = 0;
 
 var checkboardIdx;
-var earthIdx, cloudsIdx, bordersIdx;
+var earthIdx, cloudsIdx, bordersIdx, waterIdx;
 
 //-------------------------------------------------------------------------------------------------
 function Light() 
@@ -52,20 +52,13 @@ function Light()
     this.ambient  = vec4(0.2, 0.2, 0.2, 1.0);
     this.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     this.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    this.pos = [1000.0, 0.0, 0.0];
-    this.scale = [1, 1, 1];
-    this.rotate = [0, 0, 0];        // rotate pos in world coordinates
+    this.pos = vec4(1000.0, 0.0, 0.0, 1.0);
 }
 
-Light.prototype.transform = function(camEye)
+Light.prototype.transform = function(cam)
 {
-    var rx = rotateX(this.rotate[0]);
-    var ry = rotateY(this.rotate[1]);
-    var rz = rotateZ(this.rotate[2]);
-    var r = mult(rz, mult(ry, rx));
-    var w = mult(r, scalem(this.scale));
     // get light position relative to camera position
-    var lpos = mult(translate(negate(camEye)), w);     
+    var lpos = cam; //translate(negate(cam));     
     return lpos;
 }
 
@@ -148,13 +141,13 @@ function CADObject(name, mesh)
     this.name = name;
     this.mesh = mesh;
 
-    // lighting material properties
+    // degault lighting material properties
     this.ambient  = vec4(0.25, 0.25, 0.25, 1.0);
     this.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     this.specular = vec4(0.2, 0.2, 0.2, 1.0);
     this.shininess = 15.0;
 
-    // object in world space
+    // default orientation in world space
     this.rotate = [0, 0, 0];
     this.scale  = [1, 1, 1];
     this.translate = [0, 0, 0];
@@ -178,21 +171,12 @@ CADObject.prototype.transform = function(camera)
 //-------------------------------------------------------------------------------------------------
 function Sphere(resolution) {
     Mesh.call(this);
-    this.resolution = resolution || 64;
+    this.resolution = resolution || 48;
 }
 Sphere.prototype = Object.create(Mesh.prototype);
 
 Sphere.prototype.addVertices = function() 
 {
-    function spherical_to_cartesian(theta, phi)
-    {
-        // phi is angle from xz-plane, need angle from y-axis
-        var rho = Math.PI / 2 - phi;
-        var x = Math.sin(rho) * Math.sin(theta);
-        var y = Math.cos(rho);
-        var z = Math.sin(rho) * Math.cos(theta);
-        return [x, y, z];
-    }
     function addTriangle(a, b, c)
     {
         var p0 = this.vert.length;
@@ -279,6 +263,17 @@ Sphere.prototype.draw = function()
 }
 
 //-------------------------------------------------------------------------------------------------
+function spherical_to_cartesian(theta, phi)
+{
+    // phi is angle from xz-plane, need angle from y-axis
+    var rho = Math.PI / 2 - phi;
+    var x = Math.sin(rho) * Math.sin(theta);
+    var y = Math.cos(rho);
+    var z = Math.sin(rho) * Math.cos(theta);
+    return [x, y, z];
+}
+
+//-------------------------------------------------------------------------------------------------
 window.onload = function init()
 {
     canvas = document.getElementById("gl-canvas");
@@ -353,21 +348,12 @@ window.onload = function init()
         }
     }
     
-    document.getElementById("btn-reset").onclick = reset_scene;
+    document.getElementById('btn-reset').onclick = reset_scene;
+    
+    // catch mouse down in canvas, catch other mouse events in whole window
+    canvas.addEventListener('mousemove', mouse_move);
+    canvas.onwheel = mouse_zoom;
    
-    // inputs and slider controls
-    document.getElementById('range-rotate-x').oninput = cur_obj_change;
-    document.getElementById('range-rotate-y').oninput = cur_obj_change;
-    document.getElementById('range-rotate-z').oninput = cur_obj_change;
-    
-    document.getElementById('radio-proj-perspective').checked = true;
-    document.getElementById('range-cam-x').oninput = cam_change;
-    document.getElementById('range-cam-y').oninput = cam_change;
-    document.getElementById('range-cam-z').oninput = cam_change;
-    document.getElementById('range-lookat-x').oninput = cam_change;
-    document.getElementById('range-lookat-y').oninput = cam_change;
-    document.getElementById('range-lookat-z').oninput = cam_change;
-    
     reset_scene();
     
     // lights
@@ -375,18 +361,18 @@ window.onload = function init()
     light.ambient  = vec4(0.2, 0.2, 0.2, 1.0);
     light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(-100e6, 0.0, 150e6, 1.0);
+    light.pos = vec4(0, 0.0, 150e6, 1.0);
     lights.push(light);
 
     // default objects on canvas
     create_new_obj('sphere');
-    currObj.scale = [6378, 6360, 6378];
+    currObj.scale = [EARTH_RADIUS, EARTH_RADIUS - 18, EARTH_RADIUS];
     currObj.translate = [0, 0, 0];
     currObj.rotate = [0, 0, 15];
-    // currObj.ambient  = vec4(0.3, 0.3, 0.3, 1.0);
-    currObj.shininess = 100;
-    cur_obj_set_controls();
-
+    currObj.diffuse   = vec4(0.7, 0.7, 0.7, 1.0);
+    currObj.specular  = vec4(0.2, 0.2, 0.2, 1.0);
+    currObj.shininess = 20.0;
+    
     // Textures
     checkboardIdx = configureTexture(gen_checkboard(), true);
 
@@ -406,6 +392,11 @@ window.onload = function init()
         img3.onload = function() {
             bordersIdx = configureTexture(img3, false);
         }
+        var img4 = new Image();
+        img4.src = "textures/water_8k.png";
+        img4.onload = function() {
+            waterIdx = configureTexture(img4, false);
+        }
         
         //image.src = "textures/earth_8k.jpg";
         //image.src = "textures/2_no_clouds_8k.jpg";
@@ -420,103 +411,90 @@ window.onload = function init()
 //-------------------------------------------------------------------------------------------------
 function create_new_obj(objType)
 {
-    var type = objType || document.getElementById('sel-type').value;
-    var opt = document.createElement('option');
-    objCount++;
-    var name = type + objCount;
-    opt.value = name;
-    opt.innerHTML = name;
-
-    objs.push(new CADObject(name, meshes[type]));
+    objs.push(new CADObject(name, meshes[objType]));
     currObj = objs[objs.length - 1];
-    currObj.scale = [50, 50, 50];
-    currObj.translate = camAt.slice();
-    cur_obj_set_controls();
 }
 
 //-------------------------------------------------------------------------------------------------
 function reset_scene()
 {
-    objs = [];
-    currObj = null;
-    objCount = 0;
-
-    camEye = [0, 10000, 35000];
+    camEye = [0, 0, 36000];
     camAt  = [0, 0, 0];
-    cam_set();
+    up = [0, 1, 0];
 }
 
 //-------------------------------------------------------------------------------------------------
-function clip_to_range(x, min, max)
+function mat_vec_mult(mat, vec)
 {
-    if (Array.isArray(x)) {
-        for (var i = 0; i < x.length; ++i) {
-            if (x[i] < min[i]) 
-                x[i] = min[i];
-            else if (x[i] > max[i])
-                x[i] = max[i];
+    var v = vec.slice();
+    if (vec.length == 3) {
+        v.push(1);
+    }
+    var m = transpose(mat);
+    var res = [dot(m[0], v),
+               dot(m[1], v),
+               dot(m[2], v),
+               dot(m[3], v)];
+
+    if (vec.length == 3) {
+        res.pop();
+    }
+
+    return res;
+}
+
+//-------------------------------------------------------------------------------------------------
+function mouse_move(ev)
+{
+    if (typeof mouse_move.x == 'undefined') {
+        mouse_move.x = ev.pageX;
+        mouse_move.y = ev.pageY;
+    }
+    var dx = Math.sign(mouse_move.x - ev.pageX);
+    var dy = Math.sign(ev.pageY - mouse_move.y);
+    mouse_move.x = ev.pageX;
+    mouse_move.y = ev.pageY;
+
+    if (ev.buttons & 1) {
+        // make rotation angle dependend on radius of camera
+        var angle_scale = (length(camEye) - EARTH_RADIUS) / (ZOOM_MAX / 2);
+
+        // calculate new up vector perpendicular to current view
+        // and in same plane as old up
+        var newup = normalize(vec3(camEye));
+        newup = subtract(up, scale(dot(up, newup), newup));
+        if (dx) {
+            //rotate left/right: around newup
+            camEye = mat_vec_mult(rotate(-dx * angle_scale, newup), camEye);
+        } 
+        if (dy) {
+            // rotate up/down: around vec normal to current view plane
+            var dir = cross(camEye, up);
+            camEye = mat_vec_mult(rotate(-dy * angle_scale, dir), camEye);
+            // change up to new up
+            up = newup;
         }
-    } else {
-        if (x < min) x = min;
-        else if (x > max) x = max;
-    }
-
-    return x;
-}
-
-//-------------------------------------------------------------------------------------------------
-function cur_obj_set_controls()
-{
-    if (!currObj) {
-        return;
-    }
-    
-    clip_to_range(currObj.rotate, rotateMin, rotateMax);
-    document.getElementById('range-rotate-x').value = document.getElementById('rotate-x').innerHTML = currObj.rotate[0];
-    document.getElementById('range-rotate-y').value = document.getElementById('rotate-y').innerHTML = currObj.rotate[1];
-    document.getElementById('range-rotate-z').value = document.getElementById('rotate-z').innerHTML = currObj.rotate[2];
-}
-
-//-------------------------------------------------------------------------------------------------
-function cur_obj_change()
-{
-    if (currObj) {
-        var rot_x = document.getElementById('range-rotate-x').value;
-        var rot_y = document.getElementById('range-rotate-y').value;
-        var rot_z = document.getElementById('range-rotate-z').value;
-        currObj.rotate[0] = document.getElementById('rotate-x').innerHTML = +rot_x;
-        currObj.rotate[1] = document.getElementById('rotate-y').innerHTML = +rot_y;
-        currObj.rotate[2] = document.getElementById('rotate-z').innerHTML = +rot_z;
     }
 }
 
 //-------------------------------------------------------------------------------------------------
-function cam_set()
+function mouse_zoom(ev)
 {
-    document.getElementById('range-cam-x').value = document.getElementById('cam-x').innerHTML = camEye[0];
-    document.getElementById('range-cam-y').value = document.getElementById('cam-y').innerHTML = camEye[1];
-    document.getElementById('range-cam-z').value = document.getElementById('cam-z').innerHTML = camEye[2];
-    document.getElementById('range-lookat-x').value = document.getElementById('lookat-x').innerHTML = camAt[0];
-    document.getElementById('range-lookat-y').value = document.getElementById('lookat-y').innerHTML = camAt[1];
-    document.getElementById('range-lookat-z').value = document.getElementById('lookat-z').innerHTML = camAt[2];
-}
+    var dir = Math.sign(ev.deltaY);
 
-//-------------------------------------------------------------------------------------------------
-function cam_change()
-{
-    camEye[0] = document.getElementById('range-cam-x').value;
-    camEye[1] = document.getElementById('range-cam-y').value;
-    camEye[2] = document.getElementById('range-cam-z').value;
-    document.getElementById('cam-x').innerHTML = camEye[0];
-    document.getElementById('cam-y').innerHTML = camEye[1];
-    document.getElementById('cam-z').innerHTML = camEye[2];
+    var r = length(camEye);
+    r += dir * 1000.0;
+    if (r > ZOOM_MAX) {
+        r = ZOOM_MAX;
+    } else if (r < ZOOM_MIN) {
+        r = ZOOM_MIN;
+    }
+    var unit = normalize(camEye);
+    for (var i = 0; i < camEye.length; ++i) {
+        camEye[i] = r * unit[i];
+    }
 
-    camAt[0] = document.getElementById('range-lookat-x').value;
-    camAt[1] = document.getElementById('range-lookat-y').value;
-    camAt[2] = document.getElementById('range-lookat-z').value;
-    document.getElementById('lookat-x').innerHTML = camAt[0];
-    document.getElementById('lookat-y').innerHTML = camAt[1];
-    document.getElementById('lookat-z').innerHTML = camAt[2];
+    ev.preventDefault();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -569,32 +547,28 @@ function configureTexture(image, synthetic)
     }
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
     return textureCnt - 1;
 }
 
 var texEnable   = [true, false, false, false];
 var textureUnit = [0, 0, 0, 0];
 
+var clcnt = 1000;
+
 //-------------------------------------------------------------------------------------------------
 function render()
 {
-    var cam = lookAt(camEye, camAt, [0, 1, 0]);
+    var cam = lookAt(camEye, camAt, up);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
-    if (document.getElementById('radio-proj-perspective').checked) {
-        var pr = perspective(22, 1.3333, 1, 1000000);
-    } else {
-        var pr = ortho(-8680, 8680, -6500, 6500, 0, 1000000);
-    }
+    var pr = perspective(22, 1.3333, 1, 1000000);
+    //var pr = ortho(-8680, 8680, -6500, 6500, 0, 1000000);
     gl.uniformMatrix4fv(prMatrixLoc, gl.FALSE, flatten(pr));
     
     var cb_light = document.getElementById('cb-light');
     
-    if (animate) {
-        objs[0].rotate[1] += 0.2;
+    if (document.getElementById('cb-animate').checked) {
+        objs[0].rotate[1] += 0.1;
     }
 
     if (document.getElementById('cb-checkerboard').checked) {
@@ -611,6 +585,7 @@ function render()
         textureUnit[0] = earthIdx;
         textureUnit[1] = cloudsIdx;
         textureUnit[2] = bordersIdx;
+        textureUnit[3] = waterIdx;
     }
     gl.uniform1iv(texEnableLoc, texEnable);
     gl.uniform1iv(samplerLoc, textureUnit);
@@ -622,13 +597,13 @@ function render()
         var specularPr = [];
         var lightPos   = [];
         for (var j = 0; j < lights.length; ++j) {
-            var lmv = transpose(lights[j].transform(camEye));
-            var lightPosVec = vec4(
-                    dot(lmv[0], lights[j].pos),
-                    dot(lmv[1], lights[j].pos),
-                    dot(lmv[2], lights[j].pos),
-                    dot(lmv[3], lights[j].pos));
-
+            var lmv = lights[j].transform(cam);
+            var lightPosVec = mat_vec_mult(lmv, lights[j].pos);
+            if (++clcnt > 1000) {
+                clcnt = 0;
+                console.log(lightPosVec);
+            }
+            
             ambientPr = ambientPr.concat(mult(lights[j].ambient, objs[i].ambient));
             if (cb_light.checked) {
                 diffusePr = diffusePr.concat(mult(lights[j].diffuse, objs[i].diffuse));

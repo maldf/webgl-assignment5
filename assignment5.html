@@ -47,7 +47,7 @@ uniform bool texEnable[4];  // 0 is ignored, always enabled
 void main()
 {
     //int i;
-    vec4 fColor;
+    vec4 fColor, p;
     
     vec3 H = normalize(L + E);
 
@@ -59,17 +59,18 @@ void main()
     vec4 specular = Ks * specularProduct;
     if (dot(L, N) < 0.0) {
         specular = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-    fColor = ambient + diffuse + specular;
-    fColor.a = 1.0;
+    } 
     
-    gl_FragColor = fColor * texture2D(sampler[0], texCoord);
-    for (int i = 1; i < 4; i++) {
+    fColor = ambient + diffuse + specular;
+    
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    for (int i = 0; i < 4; i++) {
         if (texEnable[i]) {
-            vec4 p = texture2D(sampler[i], texCoord);
-            gl_FragColor += fColor * p;
+            gl_FragColor += texture2D(sampler[i], texCoord);
         }
     }
+    //gl_FragColor *= fColor;
+    gl_FragColor.a = 1.0;
 }
 </script>
 
@@ -85,88 +86,26 @@ void main()
         <h4 id="heading">WebGL Assignment 5: Texture Mapping to a Sphere</h4>
     </div>
 
-    <canvas id="gl-canvas" width="1024" height="768">
+    <canvas id="gl-canvas" width="800" height="600">
         Oops ... your browser doesn't support the HTML5 canvas element
     </canvas>
 
     <div id="control">
-        <button id="btn-reset">Reset</button>
-        <br>
-
-        <!-- Current object controls -->
-        <table id="table-current-obj" class="table-ctrl">
-                <td>rotate: x</td>
-                <td><input id="range-rotate-x" type="range" min=-360 max=360 value=0></td>
-                <td id="rotate-x">0</td>
-            </tr>
-            <tr>
-                <td>rotate: y</td>
-                <td><input id="range-rotate-y" type="range" min=-360 max=360 value=0></td>
-                <td id="rotate-y">0</td>
-            </tr>
-            <tr>
-                <td>rotate: z</td>
-                <td><input id="range-rotate-z" type="range" min=-360 max=360 value=0></td>
-                <td id="rotate-z">0</td>
-            </tr>
-        </table>
+        <button id="btn-reset">Reset camera</button>
 
         <!-- Camera controls -->
-        <table id="table-camera" class="table-ctrl">
-            <tr>
-                <td>projection</td>
-                <td id="td-radio-proj">
-                    <input id="radio-proj-perspective" type="radio" name="proj" value="perspective">perspective
-                    <input id="radio-proj-ortho" type="radio" name="proj" value="ortho">ortho
-                </td>
-            </tr>
-            <tr>
-                <td>Controls</td>
-                <td>
-                    <input id="cb-light" type="checkbox" checked>Light
-                    <input id="cb-checkerboard" type="checkbox">Checkerboard
-                </td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>
-                    <input id="cb-clouds" type="checkbox">Weather
-                    <input id="cb-borders" type="checkbox">Borders
-                </td>
-            </tr>
-            <tr>
-                <td>camera: x</td>
-                <td><input id="range-cam-x" type="range" min=-1000 max=1000 value=100></td>
-                <td id="cam-x">100</td>
-            </tr>
-            <tr>
-                <td>camera: y</td>
-                <td><input id="range-cam-y" type="range" min=-1000 max=1000 value=100></td>
-                <td id="cam-y">100</td>
-            </tr>
-            <tr>
-                <td>camera: z</td>
-                <td><input id="range-cam-z" type="range" min=-1000 max=1000 value=100></td>
-                <td id="cam-z">100</td>
-            </tr>
-            
-            <tr>
-                <td>lookat: x</td>
-                <td><input id="range-lookat-x" type="range" min=-1000 max=1000 value=0></td>
-                <td id="lookat-x">0</td>
-            </tr>
-            <tr>
-                <td>lookat: y</td>
-                <td><input id="range-lookat-y" type="range" min=-1000 max=1000 value=500></td>
-                <td id="lookat-y">0</td>
-            </tr>
-            <tr>
-                <td>lookat: z</td>
-                <td><input id="range-lookat-z" type="range" min=-1000 max=1000 value=0></td>
-                <td id="lookat-z">0</td>
-            </tr>
-        </table>
-    
+        <span id="table-camera" class="table-ctrl">
+            <input id="cb-light" type="checkbox" hidden checked> 
+            <input id="cb-checkerboard" type="checkbox">Checkerboard
+            <input id="cb-clouds" type="checkbox">Weather
+            <input id="cb-borders" type="checkbox">Borders
+            <input id="cb-animate" type="checkbox" checked>Animate
+        </span>
+    </div>
+    <div id="instruction">
+        Use mouse + left-button to change view.
+        </br>
+        Use mouse wheel to zoom.
     </div>
 
     <!--

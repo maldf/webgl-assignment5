@@ -9,16 +9,15 @@ body {
 
 #control {
     margin-top: 1em;
-    width: 1024px;
+    width: 800px;
 }
 
 #heading {
-    width: 1024px;
+    width: 800px;
     text-align: center;
 }
 
 .table-ctrl {
-    margin-top: 1em;
     border: 1px black solid;
     background: #e0e0f0;
     padding-right: 10px;
@@ -69,4 +68,10 @@ button {
 #footer > #status {
     color: #f02020;
     padding-left: 10em;
+}
+
+#instruction {
+    font-size: 0.8em;
+    padding-top: 1em;
+    padding-left: 1em;
 }
