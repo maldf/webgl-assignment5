@@ -37,7 +37,7 @@ var camEye;
 var camAt;
 var up;
 const EARTH_RADIUS = 6378;
-const ZOOM_MIN = 8000.0;
+const ZOOM_MIN = 12000.0;           // Nearer requires bigger textures
 const ZOOM_MAX = 70000.0;
 
 var mouse_btn = false;              // state of mouse button
@@ -383,22 +383,22 @@ window.onload = function init()
 
     {
         var img1 = new Image();
-        img1.src = "textures/2_no_clouds_8k.jpg";
+        img1.src = "textures/no_clouds.jpg";
         img1.onload = function() {
             earthIdx = configureTexture(img1, false);
         }
         var img2 = new Image();
-        img2.src = "textures/fair_clouds_8k.jpg";
+        img2.src = "textures/fair_clouds.jpg";
         img2.onload = function() {
             cloudsIdx = configureTexture(img2, false);
         }
         var img3 = new Image();
-        img3.src = "textures/boundaries_8k.png";
+        img3.src = "textures/boundaries.png";
         img3.onload = function() {
             bordersIdx = configureTexture(img3, false);
         }
         var img4 = new Image();
-        img4.src = "textures/cities_8k.png";
+        img4.src = "textures/cities.png";
         img4.onload = function() {
             waterIdx = configureTexture(img4, false);
         }
