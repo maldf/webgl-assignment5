@@ -43,8 +43,59 @@ const ZOOM_MAX = 70000.0;
 var mouse_btn = false;              // state of mouse button
 var textureCnt = 0;
 
-var checkboardIdx;
-var earthIdx, cloudsIdx, bordersIdx, waterIdx;
+var textures = [];
+// texture vars send to shader
+var texEnable   = [true, false, false, false];
+var textureUnit = [0, 0, 0, 0];
+
+//-------------------------------------------------------------------------------------------------
+function Texture(url, synthetic)
+{
+    if (synthetic) {
+        this.img = url;
+        this.texUnit = configureTexture(this.img, synthetic);
+    } else {
+        this.img = new Image();
+        this.texUnit = -1;
+        var self = this;
+        this.img.src = url;
+        
+        this.img.onload = function() {
+            self.texUnit = configureTexture(self.img, synthetic);
+            // TODO: hack, only start render when all textures loaded
+            if (self.texUnit == 4) {
+                render();
+            }
+        }
+    }
+}
+
+//-------------------------------------------------------------------------------------------------
+function configureTexture(image, synthetic) 
+{
+    gl.activeTexture(gl.TEXTURE0 + textureCnt);
+    textureCnt++;
+    
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    
+    if (synthetic) {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        // TODO: assume img is square
+        var size = Math.sqrt(image.length / 4);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    } else {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+    gl.generateMipmap(gl.TEXTURE_2D);
+
+    return textureCnt - 1;
+}
 
 //-------------------------------------------------------------------------------------------------
 function Light() 
@@ -379,38 +430,11 @@ window.onload = function init()
     currObj.shininess = 20.0;
     
     // Textures
-    checkboardIdx = configureTexture(gen_checkboard(), true);
-
-    {
-        var img1 = new Image();
-        img1.src = "textures/no_clouds.jpg";
-        img1.onload = function() {
-            earthIdx = configureTexture(img1, false);
-        }
-        var img2 = new Image();
-        img2.src = "textures/fair_clouds.jpg";
-        img2.onload = function() {
-            cloudsIdx = configureTexture(img2, false);
-        }
-        var img3 = new Image();
-        img3.src = "textures/boundaries.png";
-        img3.onload = function() {
-            bordersIdx = configureTexture(img3, false);
-        }
-        var img4 = new Image();
-        img4.src = "textures/cities.png";
-        img4.onload = function() {
-            waterIdx = configureTexture(img4, false);
-        }
-        
-        //image.src = "textures/earth_8k.jpg";
-        //image.src = "textures/2_no_clouds_8k.jpg";
-        //image.src = "textures/boundaries_8k.png";
-        //image.src = "textures/storm_clouds_8k.jpg";
-        //image.src = "textures/5_night_8k.jpg";
-    }
-    
-    render();
+    textures.push(new Texture(gen_checkboard(), true));
+    textures.push(new Texture('textures/no_clouds.jpg', false));
+    textures.push(new Texture('textures/fair_clouds.jpg', false));
+    textures.push(new Texture('textures/boundaries.png', false));
+    textures.push(new Texture('textures/cities.png', false));
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -528,36 +552,6 @@ function gen_checkboard()
 }
 
 //-------------------------------------------------------------------------------------------------
-function configureTexture(image, synthetic) 
-{
-    gl.activeTexture(gl.TEXTURE0 + textureCnt);
-    textureCnt++;
-    
-    var texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    
-    if (synthetic) {
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        // TODO: assume img is square
-        var size = Math.sqrt(image.length / 4);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0,  gl.RGBA, gl.UNSIGNED_BYTE, image);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    } else {
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    }
-    gl.generateMipmap(gl.TEXTURE_2D);
-
-    return textureCnt - 1;
-}
-
-var texEnable   = [true, false, false, false];
-var textureUnit = [0, 0, 0, 0];
-
-//-------------------------------------------------------------------------------------------------
 function render()
 {
     var cam = lookAt(camEye, camAt, up);
@@ -579,16 +573,16 @@ function render()
         texEnable[1] = false;
         texEnable[2] = false;
         texEnable[3] = false;
-        textureUnit[0] = checkboardIdx;
+        textureUnit[0] = textures[0].texUnit;
     } else {
         texEnable[0] = true;
         texEnable[1] = document.getElementById('cb-clouds').checked;
         texEnable[2] = document.getElementById('cb-borders').checked;
         texEnable[3] = cb_light.checked;
-        textureUnit[0] = earthIdx;
-        textureUnit[1] = cloudsIdx;
-        textureUnit[2] = bordersIdx;
-        textureUnit[3] = waterIdx;
+        textureUnit[0] = textures[1].texUnit;
+        textureUnit[1] = textures[2].texUnit;
+        textureUnit[2] = textures[3].texUnit;
+        textureUnit[3] = textures[4].texUnit;
     }
     gl.uniform1iv(texEnableLoc, texEnable);
     gl.uniform1iv(samplerLoc, textureUnit);
@@ -607,12 +601,6 @@ function render()
                 diffusePr = diffusePr.concat(mult(lights[j].diffuse, objs[i].diffuse));
                 specularPr = specularPr.concat(mult(lights[j].specular, objs[i].specular));
             } 
-            /* 
-            else {
-                diffusePr = diffusePr.concat([0.0, 0.0, 0.0, 1.0]);
-                specularPr = specularPr.concat([0.0, 0.0, 0.0, 1.0]);
-            }
-            */
             lightPos = lightPos.concat(lightPosVec);
         }
         gl.uniform4fv(ambientPrLoc, flatten(ambientPr));
