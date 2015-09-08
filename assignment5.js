@@ -11,12 +11,12 @@ var nBufferIdx;                     // current index of normal buffer
 var iBufferIdx;                     // current index of element buffer
 var tBufferIdx;                     // current index of texture buffer
 
-const NUM_VERTS = 100000;
+const NUM_VERTS = 20000;
 const VERT_DATA_SIZE = 12;          // each vertex = (3 axes) * sizeof(float)
 const NORMAL_DATA_SIZE = VERT_DATA_SIZE;
 const TEXTURE_DATA_SIZE = 8;        // each vertex = (2 axes) * sizeof(float)
 
-const NUM_ELEMS = 120000;  
+const NUM_ELEMS = 20000;
 const ELEM_DATA_SIZE = Uint16Array.BYTES_PER_ELEMENT;
 
 var objs = [];
@@ -40,13 +40,11 @@ const EARTH_RADIUS = 6378;
 const ZOOM_MIN = 12000.0;           // Nearer requires bigger textures
 const ZOOM_MAX = 70000.0;
 
-var mouse_btn = false;              // state of mouse button
 var textureCnt = 0;
-
 var textures = [];
 // texture vars send to shader
-var texEnable   = [true, false, false, false];
-var textureUnit = [0, 0, 0, 0];
+var texEnable   = [true, false, false, false, false];
+var textureUnit = [0, 0, 0, 0, 0];
 
 //-------------------------------------------------------------------------------------------------
 function Texture(url, synthetic)
@@ -196,15 +194,15 @@ function CADObject(name, mesh)
     this.name = name;
     this.mesh = mesh;
 
-    // degault lighting material properties
+    // default lighting material properties
     this.ambient  = vec4(0.25, 0.25, 0.25, 1.0);
     this.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     this.specular = vec4(0.2, 0.2, 0.2, 1.0);
     this.shininess = 15.0;
 
     // default orientation in world space
-    this.rotate = [0, 0, 0];
-    this.scale  = [1, 1, 1];
+    this.rotate    = [0, 0, 0];
+    this.scale     = [1, 1, 1];
     this.translate = [0, 0, 0];
 }
 
@@ -406,26 +404,26 @@ window.onload = function init()
     
     document.getElementById('btn-reset').onclick = reset_scene;
     
-    // catch mouse down in canvas, catch other mouse events in whole window
+    // handle mouse + wheel
     canvas.addEventListener('mousemove', mouse_move);
     canvas.onwheel = mouse_zoom;
    
     reset_scene();
     
-    // lights
+    // lights (the sun)
     var light = new Light();
     light.ambient  = vec4(0.2, 0.2, 0.2, 1.0);
-    light.diffuse  = vec4(0.8, 0.8, 0.8, 1.0);
+    light.diffuse  = vec4(1.0, 1.0, 1.0, 1.0);
     light.specular = vec4(1.0, 1.0, 1.0, 1.0);
-    light.pos = vec4(50e6, 0.0, 140e6, 1.0);
+    light.pos = vec4(40e6, 20e6, 140e6, 1.0);
     lights.push(light);
 
     // default objects on canvas
     create_new_obj('sphere');
     currObj.scale = [EARTH_RADIUS, EARTH_RADIUS - 18, EARTH_RADIUS];
     currObj.translate = [0, 0, 0];
-    currObj.rotate = [0, 0, 15];
-    currObj.diffuse   = vec4(1.0, 1.0, 1.0, 1.0);
+    currObj.rotate    = [0, 0, 15];
+    currObj.diffuse   = vec4(0.9, 0.9, 0.9, 1.0);
     currObj.specular  = vec4(0.2, 0.2, 0.2, 1.0);
     currObj.shininess = 20.0;
     
@@ -435,6 +433,7 @@ window.onload = function init()
     textures.push(new Texture('textures/fair_clouds.jpg', false));
     textures.push(new Texture('textures/boundaries.png', false));
     textures.push(new Texture('textures/cities.png', false));
+    //textures.push(new Texture('textures/normalmap.png', false));
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -447,7 +446,7 @@ function create_new_obj(objType)
 //-------------------------------------------------------------------------------------------------
 function reset_scene()
 {
-    camEye = [-20000, 2000, 30000];
+    camEye = [-25000, 2000, 25000];
     camAt  = [0, 0, 0];
     up = [0, 1, 0];
 }
@@ -573,16 +572,19 @@ function render()
         texEnable[1] = false;
         texEnable[2] = false;
         texEnable[3] = false;
+        texEnable[4] = false;
         textureUnit[0] = textures[0].texUnit;
     } else {
         texEnable[0] = true;
         texEnable[1] = document.getElementById('cb-clouds').checked;
         texEnable[2] = document.getElementById('cb-borders').checked;
         texEnable[3] = cb_light.checked;
+        texEnable[4] = false;
         textureUnit[0] = textures[1].texUnit;
         textureUnit[1] = textures[2].texUnit;
         textureUnit[2] = textures[3].texUnit;
         textureUnit[3] = textures[4].texUnit;
+        //textureUnit[4] = textures[5].texUnit;
     }
     gl.uniform1iv(texEnableLoc, texEnable);
     gl.uniform1iv(samplerLoc, textureUnit);

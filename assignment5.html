@@ -41,32 +41,25 @@ uniform vec4 ambientProduct, diffuseProduct, specularProduct;
 uniform float shininess;
 varying vec3 N, L, E;
 varying vec2 texCoord;
-uniform sampler2D sampler[4];
-uniform bool texEnable[4];  // 0 is ignored, always enabled
+uniform sampler2D sampler[5];
+uniform bool texEnable[5];
 uniform bool lightEnable;
 
 void main()
 {
-    //int i;
     vec4 fColor = vec4(0.8, 0.8, 0.8, 1.0);
     
     vec3 H = normalize(L + E);
 
-    vec3 n = N;
-    /*
-    if (texEnable[3]) {
-        vec4 p = texture2D(sampler[3], texCoord);
-        n += p.xyz / 8.0;
-    }
-    */
+    // TODO: bumpmap
 
     // Compute terms in the illumination equation
     vec4 ambient = ambientProduct;
-    float Kd = max(dot(L, n), 0.0);
+    float Kd = max(dot(L, N), 0.0);
     vec4 diffuse = Kd * diffuseProduct;
-    float Ks = pow(max(dot(n, H), 0.0), shininess);
+    float Ks = pow(max(dot(N, H), 0.0), shininess);
     vec4 specular = Ks * specularProduct;
-    if (dot(L, n) < 0.0) {
+    if (dot(L, N) < 0.0) {
         specular = vec4(0.0, 0.0, 0.0, 1.0);
     } 
     
@@ -75,6 +68,7 @@ void main()
     }
     
     gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    // texture 0-2 is overlayed if enabled
     for (int i = 0; i < 3; i++) {
         if (texEnable[i]) {
             gl_FragColor += texture2D(sampler[i], texCoord);
@@ -82,12 +76,13 @@ void main()
     }
 
     gl_FragColor *= fColor;
-    if (lightEnable && texEnable[3]) {
-        float night = dot(L,n);
+    // texture 3 is night lights, only show in night area
+    if (texEnable[3]) {
+        float night = dot(L, N);
         if (night < 0.0) {
             night = 0.0;
         }
-        night = pow(1.0 - night, 8.0);
+        night = pow(1.0 - night, 10.0);
         gl_FragColor += night * texture2D(sampler[3], texCoord);
     }
 
@@ -132,7 +127,7 @@ void main()
 
     <div id="footer">
         Tested with Firefox and Chrome.
-        </br>Using downsampled versions of the awesome textures at <a href="http://www.shadedrelief.com/natural3/index.html">shadedrelief</a>.
+        </br>Using low res versions of the awesome textures at <a href="http://www.shadedrelief.com/natural3/index.html">shadedrelief</a>.
     </div>
 </body>
 </html>
