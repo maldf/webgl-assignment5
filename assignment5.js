@@ -62,6 +62,7 @@ function Texture(url, synthetic)
             self.texUnit = configureTexture(self.img, synthetic);
             // TODO: hack, only start render when all textures loaded
             if (self.texUnit == 4) {
+                document.getElementById("status").innerHTML = "";
                 render();
             }
         }
@@ -428,6 +429,7 @@ window.onload = function init()
     currObj.shininess = 20.0;
     
     // Textures
+    document.getElementById("status").innerHTML = "Loading textures..."
     textures.push(new Texture(gen_checkboard(), true));
     textures.push(new Texture('textures/no_clouds.jpg', false));
     textures.push(new Texture('textures/fair_clouds.jpg', false));
